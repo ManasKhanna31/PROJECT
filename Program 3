@@ -1,0 +1,116 @@
+Program 3
+
+%pip install -q pandas numpy scikit-learn joblib pytest
+import pandas as pd
+import joblib
+
+from sklearn.datasets import load_diabetes
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
+
+# Load dataset
+data = load_diabetes()
+
+X = pd.DataFrame(data.data, columns=data.feature_names)
+y = data.target
+
+# Split dataset
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+
+# Train model
+model = LinearRegression()
+model.fit(X_train, y_train)
+
+# Evaluate model
+predictions = model.predict(X_test)
+mse = mean_squared_error(y_test, predictions)
+
+# Save model
+joblib.dump(model, "diabetes_model.joblib")
+
+print("Model trained successfully!")
+print("MSE:", mse)
+print("Model saved successfully!")
+----
+%%writefile test_model.py
+
+import joblib
+import numpy as np
+
+def test_model_prediction():
+    model = joblib.load("diabetes_model.joblib")
+
+    input_data = np.array([
+        0.02, 0.07, 0.03, 0.02, 0.01,
+        0.03, 0.01, 0.04, 0.03, 0.01
+    ]).reshape(1, -1)
+
+    prediction = model.predict(input_data)
+
+    assert isinstance(prediction[0], (float, np.floating)), \
+        f"Expected float but got {type(prediction[0])}"
+
+def test_model_output_shape():
+    model = joblib.load("diabetes_model.joblib")
+
+    input_data = np.zeros((5, 10))
+    predictions = model.predict(input_data)
+
+    assert predictions.shape == (5,), \
+        f"Expected shape (5,) but got {predictions.shape}"
+----
+!pytest test_model.py -v
+----
+import os
+os.makedirs(".github/workflows",exist_ok=True)
+----
+%%writefile ci.yml
+
+name: MLOps CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas scikit-learn joblib pytest
+
+      - name: Train model
+        run: python train.py
+
+      - name: Run unit tests
+        run: pytest test_model.py -v
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy model
+        run: |
+          echo "Deploying trained model..."
+          # gcloud run deploy mlops-api --source . --region us-central1
